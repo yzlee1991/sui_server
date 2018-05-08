@@ -30,7 +30,11 @@ import com.sun.org.apache.xml.internal.security.utils.Base64;
 public class Server {
 	
 	// 之后添加factory，要能在主线程捕获其他线程中的异常
-	private ExecutorService cachedThreadPool = Executors.newCachedThreadPool();
+	private ExecutorService cachedThreadPool = Executors.newCachedThreadPool(runnable -> {
+		Thread thread = new Thread(runnable);
+		thread.setDaemon(true);
+		return thread;
+	});
 
 	final MillisecondClock clock = new MillisecondClock(cachedThreadPool);
 
