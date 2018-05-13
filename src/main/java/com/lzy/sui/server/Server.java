@@ -25,6 +25,8 @@ import com.lzy.sui.common.utils.RSAUtils;
 import com.lzy.sui.server.filter.HeartbeatFilter;
 import com.lzy.sui.server.filter.RequestFilter;
 import com.lzy.sui.server.listener.HeartBeatListener;
+import com.lzy.sui.server.rmi.RmiServer;
+import com.lzy.sui.server.rmi.service.HostService;
 import com.sun.org.apache.xml.internal.security.utils.Base64;
 
 public class Server {
@@ -50,8 +52,10 @@ public class Server {
 
 	private long lastTime = clock.now();
 	
+	private RmiServer rmiServer=RmiServer.newInstance();
+	
 	//缓存连接服务器的所有socket
-	public static Map<String,Socket> socketMap=new HashMap<String, Socket>();
+	public static Map<String,Socket> socketMap=new HashMap<String, Socket>();//key=identityId
 
 	public void start() {
 		init();
@@ -134,7 +138,7 @@ public class Server {
 				String userName = RSAUtils.decrypt(entity.getParams().get(0), privateKey);
 				String passWord = RSAUtils.decrypt(entity.getParams().get(1), privateKey);
 				if (userName.equals("lzy") && passWord.equals("123456")) {
-					socketMap.put(entity.getIdentityId(), socket);//缓存socket
+					socketMap.put(entity.getIdentityId(), socket);//缓存socket，这步的key应该查数据库得到
 					entity = new ProtocolEntity();
 					entity.setReplyState(ProtocolEntity.ReplyState.SUCCESE);
 					entity.setReply("登陆成功");
@@ -145,7 +149,7 @@ public class Server {
 					System.out.println("登陆成功");
 				} else {
 					entity = new ProtocolEntity();
-					entity.setReplyState(ProtocolEntity.ReplyState.FAIL);
+					entity.setReplyState(ProtocolEntity.ReplyState.ERROR);
 					entity.setReply("登陆失败，用户名或密码错误");
 					json = gson.toJson(entity);
 					bw.write(json);
@@ -174,19 +178,22 @@ public class Server {
 		System.out.println("初始化配置...");
 		// 1.注册filter，之后改成反射可以扫描注册
 		register();
-		// 2.开启心跳超时检测，之后看情况还quarz第三方类
+		// 2.rmi服务注册
+		rmiServer.autoRegister();
+		// 3.开启心跳超时检测，之后看情况还quarz第三方类
 		heartBeatCheck();
 	}
 
 	private void register() {
+		System.out.println("处理器自动注册...");
 		try {
 			String scanPath = this.getClass().getResource("").getPath() + "filter";
 			Filter filter = null;
-			String packName = this.getClass().getPackage().getName() + ".filter.";
+			String packageName = this.getClass().getPackage().getName() + ".filter.";
 			File file = new File(scanPath);
 			for (File f : file.listFiles()) {
 				String fileName = f.getName();
-				String packageClassName = packName + fileName.substring(0, fileName.indexOf("."));
+				String packageClassName = packageName + fileName.substring(0, fileName.indexOf("."));
 				Filter newFilter = (Filter) Class.forName(packageClassName).newInstance();
 				if (headFilter == null) {
 					filter = newFilter;
@@ -195,7 +202,7 @@ public class Server {
 					filter.register(newFilter);
 					filter = newFilter;
 				}
-				System.out.println("注册服务：" + newFilter.getClass().getName());
+				System.out.println("注册处理器：" + newFilter.getClass().getName());
 			}
 		} catch (Exception e) {
 			e.printStackTrace();
@@ -220,7 +227,7 @@ public class Server {
 							// 超时socket
 							System.out.println("超时Socket:" + socket);
 							socket.close();
-							heartBeatMap.remove(socket);
+							heartBeatMap.remove(socket);//迭代的时候操作容器有问题，之后修复
 						}
 					}
 					lastTime = currentTime;
