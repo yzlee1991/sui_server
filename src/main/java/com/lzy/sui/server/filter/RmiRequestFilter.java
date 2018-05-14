@@ -50,7 +50,7 @@ public class RmiRequestFilter extends Filter {
 				
 				// 获取对应的方法（注意，哪个对象调用则用哪个对象的class获取）
 				List<String> paramsType = entity.getParamsType();
-				Method[] methods = target.getClass().getDeclaredMethods();
+				Method[] methods = proxy.getClass().getDeclaredMethods();
 				Method method = null;
 				for (Method m : methods) {
 					if (!m.getName().equals(entity.getMethodName())) {
