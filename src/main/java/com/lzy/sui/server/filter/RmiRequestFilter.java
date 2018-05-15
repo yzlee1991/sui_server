@@ -20,9 +20,9 @@ import com.sun.org.apache.xml.internal.security.utils.Base64;
 public class RmiRequestFilter extends Filter {
 
 	private Gson gson = new Gson();
-	
-	private RmiServer rmiServer=RmiServer.newInstance();
-	
+
+	private RmiServer rmiServer = RmiServer.newInstance();
+
 	@Override
 	public void handle(ProtocolEntity entity) {
 		try {
@@ -40,14 +40,11 @@ public class RmiRequestFilter extends Filter {
 				// 获取代理对象
 				Object target = rmiServer.getCacheMap().get(entity.getRmiName()).getObj();
 				String identityId = entity.getIdentityId();
-				ResponseSocketHandle handle = new ResponseSocketHandle(targetSocket, target,
-						ProtocolEntity.TARGER_SERVER, identityId, entity.getMode());
+				ResponseSocketHandle handle = new ResponseSocketHandle(targetSocket, target, identityId);
 				handle.setConversationId(entity.getConversationId());
 				Object proxy = Proxy.newProxyInstance(target.getClass().getClassLoader(),
 						target.getClass().getInterfaces(), handle);
-				
-				
-				
+
 				// 获取对应的方法（注意，哪个对象调用则用哪个对象的class获取）
 				List<String> paramsType = entity.getParamsType();
 				Method[] methods = proxy.getClass().getDeclaredMethods();

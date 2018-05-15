@@ -16,7 +16,7 @@ import com.lzy.sui.common.utils.CommonUtils;
 import com.lzy.sui.server.Server;
 import com.sun.org.apache.xml.internal.security.utils.Base64;
 
-public class RequestFilter extends Filter {
+public class CommonRequestFilter extends Filter {
 
 	private Gson gson = new Gson();
 
@@ -39,8 +39,7 @@ public class RequestFilter extends Filter {
 					Object target = Class.forName(entity.getClassName()).newInstance();
 					String identityId = entity.getIdentityId();
 					Socket targetSocket = Server.socketMap.get(identityId);
-					ResponseSocketHandle handle = new ResponseSocketHandle(targetSocket, target,
-							ProtocolEntity.TARGER_SERVER, identityId, entity.getMode());
+					ResponseSocketHandle handle = new ResponseSocketHandle(targetSocket, target, identityId);
 					handle.setConversationId(entity.getConversationId());
 					Object proxy = Proxy.newProxyInstance(target.getClass().getClassLoader(),
 							target.getClass().getInterfaces(), handle);
