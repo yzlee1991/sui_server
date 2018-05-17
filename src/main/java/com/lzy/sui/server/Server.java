@@ -21,12 +21,14 @@ import com.google.gson.Gson;
 import com.lzy.sui.common.abs.Filter;
 import com.lzy.sui.common.infimpl.Observer;
 import com.lzy.sui.common.model.ProtocolEntity;
+import com.lzy.sui.common.model.push.HostEntity;
+import com.lzy.sui.common.model.push.HostEvent;
 import com.lzy.sui.common.utils.CommonUtils;
 import com.lzy.sui.common.utils.MillisecondClock;
 import com.lzy.sui.common.utils.RSAUtils;
 import com.lzy.sui.server.filter.HeartbeatFilter;
+import com.lzy.sui.server.push.PushServer;
 import com.lzy.sui.server.filter.CommonRequestFilter;
-import com.lzy.sui.server.listener.HeartBeatListener;
 import com.lzy.sui.server.rmi.RmiServer;
 import com.lzy.sui.server.rmi.service.HostService;
 import com.sun.org.apache.xml.internal.security.utils.Base64;
@@ -126,6 +128,13 @@ public class Server {
 		String json = br.readLine();
 		ProtocolEntity entity = gson.fromJson(json, ProtocolEntity.class);
 		ProtocolEntity.Identity identity = entity.getIdentity();
+		
+		//推送
+		HostEntity hostEntity=new HostEntity();
+		hostEntity.setIdentity(entity.getIdentity());
+		hostEntity.setIdentityId(entity.getIdentityId());
+		hostEntity.setName(entity.getSysUserName());
+		
 		// 1.登陆
 		if (identity.equals(ProtocolEntity.Identity.USER)) {
 			// RSA账号密码登陆 1.生成并发送公钥
@@ -173,9 +182,19 @@ public class Server {
 			// 1.查找数据库，是否被拉黑，被黑则发送指令退出程序
 
 		} else {
-			// 未知类型
+			// 未知类型，抛异常
 		}
 
+		cachedThreadPool.execute(()->{
+			try {
+				HostEvent hostEvent=new HostEvent();
+				hostEvent.setJson(gson.toJson(hostEntity));
+				PushServer.newInstance().push(hostEvent);
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+		});
+		
 		return identityId;
 	}
 
