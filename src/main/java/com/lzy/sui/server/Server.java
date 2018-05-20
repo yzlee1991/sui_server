@@ -22,7 +22,7 @@ import com.lzy.sui.common.abs.Filter;
 import com.lzy.sui.common.infimpl.Observer;
 import com.lzy.sui.common.model.ProtocolEntity;
 import com.lzy.sui.common.model.push.HostEntity;
-import com.lzy.sui.common.model.push.HostEvent;
+import com.lzy.sui.common.model.push.HostOnlineEvent;
 import com.lzy.sui.common.utils.CommonUtils;
 import com.lzy.sui.common.utils.MillisecondClock;
 import com.lzy.sui.common.utils.RSAUtils;
@@ -132,7 +132,7 @@ public class Server {
 		//推送
 		HostEntity hostEntity=new HostEntity();
 		hostEntity.setIdentity(entity.getIdentity());
-		hostEntity.setIdentityId(entity.getIdentityId());
+		hostEntity.setIdentityId(identityId);
 		hostEntity.setName(entity.getSysUserName());
 		
 		// 1.登陆
@@ -187,7 +187,7 @@ public class Server {
 
 		cachedThreadPool.execute(()->{
 			try {
-				HostEvent hostEvent=new HostEvent();
+				HostOnlineEvent hostEvent=new HostOnlineEvent();
 				hostEvent.setJson(gson.toJson(hostEntity));
 				PushServer.newInstance().push(hostEvent);
 			} catch (Exception e) {
@@ -253,6 +253,9 @@ public class Server {
 							System.out.println("超时Socket:" + socket);
 							socket.close();
 							heartBeatMap.remove(socket);// 迭代的时候操作容器有问题，之后修复
+							
+							//下线推送
+							HostEntity entity=new HostEntity();
 						}
 					}
 					lastTime = currentTime;
