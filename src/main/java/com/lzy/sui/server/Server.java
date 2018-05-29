@@ -11,11 +11,18 @@ import java.net.Socket;
 import java.security.KeyPair;
 import java.security.PrivateKey;
 import java.security.PublicKey;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+
+import org.apache.ibatis.session.SqlSession;
 
 import com.google.gson.Gson;
 import com.lzy.sui.common.abs.Filter;
@@ -23,14 +30,18 @@ import com.lzy.sui.common.infimpl.Observer;
 import com.lzy.sui.common.model.ProtocolEntity;
 import com.lzy.sui.common.model.push.HostEntity;
 import com.lzy.sui.common.model.push.HostOnlineEvent;
+import com.lzy.sui.common.model.push.HostOutlineEvent;
 import com.lzy.sui.common.utils.CommonUtils;
 import com.lzy.sui.common.utils.MillisecondClock;
 import com.lzy.sui.common.utils.RSAUtils;
 import com.lzy.sui.server.filter.HeartbeatFilter;
 import com.lzy.sui.server.push.PushServer;
+import com.lzy.sui.server.db.entity.Auth;
+import com.lzy.sui.server.db.mapper.AuthMapper;
 import com.lzy.sui.server.filter.CommonRequestFilter;
 import com.lzy.sui.server.rmi.RmiServer;
 import com.lzy.sui.server.rmi.service.HostService;
+import com.lzy.sui.server.utils.Mybaits;
 import com.sun.org.apache.xml.internal.security.utils.Base64;
 
 public class Server {
@@ -48,8 +59,6 @@ public class Server {
 
 	private Filter headFilter = null;
 
-	private Map<Socket, Long> heartBeatMap = new HashMap<Socket, Long>();
-
 	private long timeout = 30000;
 
 	private int delayTime = 100;
@@ -58,11 +67,14 @@ public class Server {
 
 	private RmiServer rmiServer = RmiServer.newInstance();
 
+	// 缓存心跳检测时间
+	private Map<Socket, Long> heartBeatMap = new HashMap<Socket, Long>();
+
 	// 缓存连接服务器的所有socket
 	public static Map<String, Socket> socketMap = new HashMap<String, Socket>();// key=identityId
 
 	// 缓存socket对应的identityId
-//	private static Map<Integer, String> identityMap = new HashMap<Integer, String>();// key=socket.hashCode
+	private Map<Socket, String> identityIdMap = new HashMap<Socket, String>();
 
 	public void start() {
 		init();
@@ -77,12 +89,12 @@ public class Server {
 					try {
 						// 1.登陆
 						String identityId = login(socket);
-//						if (!flag) {
-//							br.close();
-//							bw.close();
-//							socket.close();
-//							return;
-//						}
+						// if (!flag) {
+						// br.close();
+						// bw.close();
+						// socket.close();
+						// return;
+						// }
 						heartBeatMap.put(socket, lastTime);
 						// 2.登陆成功启动监听
 						while (true) {
@@ -120,21 +132,20 @@ public class Server {
 
 	// 登陆，成功则返回身份id
 	private String login(Socket socket) throws Exception {
-
-		String identityId = UUID.randomUUID().toString();// 这步的key应该查数据库得到
-
 		BufferedReader br = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 		BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
 		String json = br.readLine();
 		ProtocolEntity entity = gson.fromJson(json, ProtocolEntity.class);
 		ProtocolEntity.Identity identity = entity.getIdentity();
-		
-		//推送
-		HostEntity hostEntity=new HostEntity();
+
+		String identityId = new String();
+
+		// 推送实体
+		HostEntity hostEntity = new HostEntity();
 		hostEntity.setIdentity(entity.getIdentity());
-		hostEntity.setIdentityId(identityId);
+		// hostEntity.setIdentityId(identityId);以后看看怎么优化
 		hostEntity.setName(entity.getSysUserName());
-		
+
 		// 1.登陆
 		if (identity.equals(ProtocolEntity.Identity.USER)) {
 			// RSA账号密码登陆 1.生成并发送公钥
@@ -152,12 +163,28 @@ public class Server {
 			// 2.校验用户名密码
 			json = br.readLine();
 			entity = gson.fromJson(json, ProtocolEntity.class);
-			// 模拟数据库操作
+			// 数据库操作（之后结合spirng等修改）
 			String userName = RSAUtils.decrypt(entity.getParams().get(0), privateKey);
 			String passWord = RSAUtils.decrypt(entity.getParams().get(1), privateKey);
-			if (userName.equals("lzy") && passWord.equals("123456")) {
+			SqlSession sqlSession = Mybaits.sessionFactory.openSession();
+			AuthMapper authMapper = sqlSession.getMapper(AuthMapper.class);
+			Auth auth = authMapper.get(userName, passWord);
+			if (auth != null) {
+				identityId = auth.getId();
+				if (socketMap.containsKey(identityId)) {
+					entity = new ProtocolEntity();
+					entity.setReplyState(ProtocolEntity.ReplyState.ERROR);
+					entity.setReply("该用户已登陆，不能重复登陆");
+					json = gson.toJson(entity);
+					bw.write(json);
+					bw.newLine();
+					bw.flush();
+					throw new RuntimeException("该用户已登陆，不能重复登陆");
+				}
+				hostEntity.setIdentityId(identityId);
 				socketMap.put(identityId, socket);
-//				identityMap.put(socket.hashCode(), identityId);
+				identityIdMap.put(socket, identityId);
+				// identityMap.put(socket.hashCode(), identityId);
 				entity = new ProtocolEntity();
 				entity.setReplyState(ProtocolEntity.ReplyState.SUCCESE);
 				entity.setReply("登陆成功");
@@ -185,16 +212,17 @@ public class Server {
 			// 未知类型，抛异常
 		}
 
-		cachedThreadPool.execute(()->{
+		// 上线推送
+		cachedThreadPool.execute(() -> {
 			try {
-				HostOnlineEvent hostEvent=new HostOnlineEvent();
+				HostOnlineEvent hostEvent = new HostOnlineEvent();
 				hostEvent.setJson(gson.toJson(hostEntity));
 				PushServer.newInstance().push(hostEvent);
 			} catch (Exception e) {
 				e.printStackTrace();
 			}
 		});
-		
+
 		return identityId;
 	}
 
@@ -246,18 +274,30 @@ public class Server {
 						Thread.sleep(delayTime);
 						continue;
 					}
-					for (Socket socket : heartBeatMap.keySet()) {
-						long lastHeartBeatTime = heartBeatMap.get(socket);
+					// for (Socket socket : heartBeatMap.keySet()) {
+					// long lastHeartBeatTime = heartBeatMap.get(socket);
+					// if ((currentTime - lastHeartBeatTime) > timeout) {
+					// // 超时socket
+					// System.out.println("超时Socket:" + socket);
+					// socket.close();
+					// heartBeatMap.remove(socket);// 迭代的时候操作容器有问题，之后修复
+					//
+					// // 下线推送
+					// HostEntity entity = new HostEntity();
+					// }
+					// }
+					Set<Entry<Socket, Long>> set = heartBeatMap.entrySet();
+					Iterator<Entry<Socket, Long>> it = set.iterator();
+					List<String> expiredSocketList = new ArrayList<String>();
+					while (it.hasNext()) {
+						Entry<Socket, Long> entry = it.next();
+						long lastHeartBeatTime = entry.getValue();
 						if ((currentTime - lastHeartBeatTime) > timeout) {
-							// 超时socket
-							System.out.println("超时Socket:" + socket);
-							socket.close();
-							heartBeatMap.remove(socket);// 迭代的时候操作容器有问题，之后修复
-							
-							//下线推送
-							HostEntity entity=new HostEntity();
+							String identityId = identityIdMap.get(entry.getKey());
+							expiredSocketList.add(identityId);
 						}
 					}
+					outLine(expiredSocketList);
 					lastTime = currentTime;
 				}
 			} catch (Exception e) {
@@ -265,6 +305,40 @@ public class Server {
 			}
 
 		});
+	}
+
+	private void outLine(List<String> list) throws Exception{
+		for(String identityId:list){
+			outLine(identityId);
+		}
+	}
+	
+	private void outLine(String identityId) throws Exception {
+		// 1.关闭socket
+		socketMap.get(identityId).close();
+		// 2.清理socket相关的集合数据
+		clearExpiredSocketData(identityId);
+		// 3.下线推送
+		cachedThreadPool.execute(() -> {
+			try {
+				HostEntity HostEntity = new HostEntity();
+				HostEntity.setIdentityId(identityId);
+				String json = gson.toJson(HostEntity);
+				HostOutlineEvent hostOutlineEvent = new HostOutlineEvent();
+				hostOutlineEvent.setJson(json);
+				PushServer.newInstance().push(hostOutlineEvent);
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+		});
+	}
+
+	private void clearExpiredSocketData(String identityId) throws Exception {
+		Socket socket = socketMap.get(identityId);
+		heartBeatMap.remove(socket);
+		identityIdMap.remove(socket);
+		socketMap.remove(identityId);
+		System.out.println("超时Socket:" + socket + "  identityId:" + identityId);
 	}
 
 }

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE configuration PUBLIC "-//mybatis.org//DTD Config 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-config.dtd">
+<configuration>
+    <!-- 
+    environments:开发模式
+    work:工作模式
+    default="development"，id="development"，两个的属性值必须一致
+     -->    
+     <properties resource="mysql.properties" />
+     <environments default="development">
+         <environment id="development">
+             <transactionManager type="JDBC"/>
+             <dataSource type="POOLED">
+                 <property name="driver" value="${jdbc.driverClass}"/>
+                 <property name="url" value="${jdbc.url}"/>
+                 <property name="username" value="${jdbc.username}"/>
+                 <property name="password" value="${jdbc.password}"/>
+             </dataSource>    
+         </environment>
+     </environments>
+     
+     <!-- 在配置文件中 关联包下的 接口类-->
+     <mappers>
+         <mapper class="com.lzy.sui.server.db.mapper.AuthMapper"/>
+     </mappers>
+</configuration>
