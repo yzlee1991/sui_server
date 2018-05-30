@@ -19,7 +19,7 @@ public class RmiFilter extends Filter {
 		try {
 			if (ProtocolEntity.Type.RMI.equals(entity.getType())) {
 				System.out.println("RMI  handling	" + entity);
-				Socket targetSocket = Server.socketMap.get(entity.getIdentityId());// 之后这个要在服务端维护
+				Socket targetSocket = Server.newInstance().socketMap.get(entity.getIdentityId());// 之后这个要在服务端维护
 				BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(targetSocket.getOutputStream()));
 
 				ProtocolEntity replyEntity = new ProtocolEntity();

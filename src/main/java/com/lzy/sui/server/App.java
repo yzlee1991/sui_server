@@ -19,7 +19,7 @@ import com.sun.org.apache.xml.internal.security.utils.Base64;
 public class App {
 
 	public static void main(String[] args){
-		new Server().start();
+		Server.newInstance().start();
 	}
 	
 /*	public static void main(String[] args) throws IOException, IllegalAccessException, IllegalArgumentException, InvocationTargetException, InstantiationException {

@@ -38,7 +38,7 @@ public class CommonRequestFilter extends Filter {
 					// 获取代理对象
 					Object target = Class.forName(entity.getClassName()).newInstance();
 					String identityId = entity.getIdentityId();
-					Socket targetSocket = Server.socketMap.get(identityId);
+					Socket targetSocket = Server.newInstance().socketMap.get(identityId);
 					ResponseSocketHandle handle = new ResponseSocketHandle(targetSocket, target, identityId);
 					handle.setConversationId(entity.getConversationId());
 					Object proxy = Proxy.newProxyInstance(target.getClass().getClassLoader(),
@@ -70,7 +70,7 @@ public class CommonRequestFilter extends Filter {
 					// 调用 对应的方法
 					method.invoke(proxy, objs);
 				} else {// 转发请求
-					Socket targetSocket = Server.socketMap.get(entity.getTargetId());
+					Socket targetSocket = Server.newInstance().socketMap.get(entity.getTargetId());
 					BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(targetSocket.getOutputStream()));
 					bw.write(gson.toJson(entity));
 					bw.newLine();

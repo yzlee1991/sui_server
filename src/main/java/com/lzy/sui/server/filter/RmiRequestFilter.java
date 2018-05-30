@@ -28,7 +28,7 @@ public class RmiRequestFilter extends Filter {
 		try {
 			if (ProtocolEntity.Type.RMIREQUEST.equals(entity.getType())) {
 				System.out.println("RmiRequestFilter  handling  " + entity);
-				Socket targetSocket = Server.socketMap.get(entity.getIdentityId());// 之后这个要在服务端维护
+				Socket targetSocket = Server.newInstance().socketMap.get(entity.getIdentityId());// 之后这个要在服务端维护
 				List<String> base64Params = entity.getParams();
 				// 还原参数对象
 				Object[] objs = new Object[base64Params.size()];

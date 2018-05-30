@@ -46,6 +46,22 @@ import com.sun.org.apache.xml.internal.security.utils.Base64;
 
 public class Server {
 
+	private static volatile Server server;
+	
+	private Server() {
+	}
+
+	public static Server newInstance() {
+		if (server == null) {
+			synchronized (Server.class) {
+				if (server == null) {
+					server = new Server();
+				}
+			}
+		}
+		return server;
+	}
+	
 	// 之后添加factory，要能在主线程捕获其他线程中的异常
 	private ExecutorService cachedThreadPool = Executors.newCachedThreadPool(runnable -> {
 		Thread thread = new Thread(runnable);
@@ -68,13 +84,13 @@ public class Server {
 	private RmiServer rmiServer = RmiServer.newInstance();
 
 	// 缓存心跳检测时间
-	private Map<Socket, Long> heartBeatMap = new HashMap<Socket, Long>();
+	public Map<Socket, Long> heartBeatMap = new HashMap<Socket, Long>();
 
 	// 缓存连接服务器的所有socket
-	public static Map<String, Socket> socketMap = new HashMap<String, Socket>();// key=identityId
+	public Map<String, Socket> socketMap = new HashMap<String, Socket>();// key=identityId
 
 	// 缓存socket对应的identityId
-	private Map<Socket, String> identityIdMap = new HashMap<Socket, String>();
+	public Map<Socket, String> identityIdMap = new HashMap<Socket, String>();
 
 	public void start() {
 		init();
@@ -97,7 +113,8 @@ public class Server {
 						// }
 						heartBeatMap.put(socket, lastTime);
 						// 2.登陆成功启动监听
-						while (true) {
+						Thread currentThread=Thread.currentThread();
+						while (!currentThread.isInterrupted()) {
 							String json = br.readLine();
 							ProtocolEntity entity = gson.fromJson(json, ProtocolEntity.class);
 							// observer.notifyListener(entity);
@@ -307,17 +324,17 @@ public class Server {
 		});
 	}
 
-	private void outLine(List<String> list) throws Exception{
+	public void outLine(List<String> list) throws Exception{
 		for(String identityId:list){
 			outLine(identityId);
 		}
 	}
 	
-	private void outLine(String identityId) throws Exception {
+	public void outLine(String identityId) throws Exception {
 		// 1.关闭socket
 		socketMap.get(identityId).close();
 		// 2.清理socket相关的集合数据
-		clearExpiredSocketData(identityId);
+		clearSocketData(identityId);
 		// 3.下线推送
 		cachedThreadPool.execute(() -> {
 			try {
@@ -333,12 +350,12 @@ public class Server {
 		});
 	}
 
-	private void clearExpiredSocketData(String identityId) throws Exception {
+	private void clearSocketData(String identityId) throws Exception {
 		Socket socket = socketMap.get(identityId);
 		heartBeatMap.remove(socket);
 		identityIdMap.remove(socket);
 		socketMap.remove(identityId);
-		System.out.println("超时Socket:" + socket + "  identityId:" + identityId);
+		System.out.println("清理Socket:" + socket + "  identityId:" + identityId);
 	}
 
 }

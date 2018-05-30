@@ -41,8 +41,8 @@ public class PushServer {
 		entity.setReply(reply);
 		
 		String json=gson.toJson(entity);
-		for(String key:Server.socketMap.keySet()){
-			Socket socket=Server.socketMap.get(key);
+		for(String key:Server.newInstance().socketMap.keySet()){
+			Socket socket=Server.newInstance().socketMap.get(key);
 			BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
 			bw.write(json);
 			bw.newLine();
