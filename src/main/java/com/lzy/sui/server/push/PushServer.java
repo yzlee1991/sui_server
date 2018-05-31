@@ -3,8 +3,12 @@ package com.lzy.sui.server.push;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
-import java.io.Serializable;
 import java.net.Socket;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 import com.google.gson.Gson;
 import com.lzy.sui.common.model.ProtocolEntity;
@@ -33,7 +37,8 @@ public class PushServer {
 		return pushServer;
 	}
 
-	public void push(PushEvent event) throws IOException {
+	public void push(PushEvent event,String... filterIdentityIds) throws IOException {
+		Set<String> filterSet=new HashSet<String>(Arrays.asList(filterIdentityIds));
 		ProtocolEntity entity=new ProtocolEntity();
 		entity.setType(ProtocolEntity.Type.PUSH);
 		byte[] bytes=CommonUtils.ObjectToByteArray(event);
@@ -42,12 +47,14 @@ public class PushServer {
 		
 		String json=gson.toJson(entity);
 		for(String key:Server.newInstance().socketMap.keySet()){
+			if(filterSet.contains(key)){
+				continue;
+			}
 			Socket socket=Server.newInstance().socketMap.get(key);
 			BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
 			bw.write(json);
 			bw.newLine();
 			bw.flush();
-			
 		}
 	}
 

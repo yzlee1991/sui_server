@@ -23,8 +23,11 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import org.apache.ibatis.session.SqlSession;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonSyntaxException;
 import com.lzy.sui.common.abs.Filter;
 import com.lzy.sui.common.infimpl.Observer;
 import com.lzy.sui.common.model.ProtocolEntity;
@@ -46,8 +49,10 @@ import com.sun.org.apache.xml.internal.security.utils.Base64;
 
 public class Server {
 
-	private static volatile Server server;
+	Logger logger = LoggerFactory.getLogger(Server.class);
 	
+	private static volatile Server server;
+
 	private Server() {
 	}
 
@@ -61,7 +66,7 @@ public class Server {
 		}
 		return server;
 	}
-	
+
 	// 之后添加factory，要能在主线程捕获其他线程中的异常
 	private ExecutorService cachedThreadPool = Executors.newCachedThreadPool(runnable -> {
 		Thread thread = new Thread(runnable);
@@ -113,10 +118,15 @@ public class Server {
 						// }
 						heartBeatMap.put(socket, lastTime);
 						// 2.登陆成功启动监听
-						Thread currentThread=Thread.currentThread();
+						Thread currentThread = Thread.currentThread();
 						while (!currentThread.isInterrupted()) {
 							String json = br.readLine();
-							ProtocolEntity entity = gson.fromJson(json, ProtocolEntity.class);
+							ProtocolEntity entity=null;
+							try{
+								entity = gson.fromJson(json, ProtocolEntity.class);
+							}catch(JsonSyntaxException e){//bug,不知道为什么传送中数据异常频率这么高，先做返回错误处理
+								logger.error("解析json出错：json[{}]",json);
+							}
 							// observer.notifyListener(entity);
 							entity.setIdentityId(identityId);
 							headFilter.handle(entity);
@@ -234,7 +244,7 @@ public class Server {
 			try {
 				HostOnlineEvent hostEvent = new HostOnlineEvent();
 				hostEvent.setJson(gson.toJson(hostEntity));
-				PushServer.newInstance().push(hostEvent);
+				PushServer.newInstance().push(hostEvent, hostEntity.getIdentityId());
 			} catch (Exception e) {
 				e.printStackTrace();
 			}
@@ -324,12 +334,12 @@ public class Server {
 		});
 	}
 
-	public void outLine(List<String> list) throws Exception{
-		for(String identityId:list){
+	public void outLine(List<String> list) throws Exception {
+		for (String identityId : list) {
 			outLine(identityId);
 		}
 	}
-	
+
 	public void outLine(String identityId) throws Exception {
 		// 1.关闭socket
 		socketMap.get(identityId).close();
