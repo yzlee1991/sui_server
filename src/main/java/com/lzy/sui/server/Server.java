@@ -118,11 +118,11 @@ public class Server {
 						Thread currentThread = Thread.currentThread();
 						while (!currentThread.isInterrupted()) {
 							ProtocolEntity entity=SocketUtils.receive(socket);
+							// 刷新心跳时间
+							heartBeatMap.put(socket, clock.now());
 							// observer.notifyListener(entity);
 							entity.setIdentityId(identityId);
 							headFilter.handle(entity);
-							// 刷新心跳时间
-							heartBeatMap.put(socket, clock.now());
 						}
 
 					} catch (Exception e) {
