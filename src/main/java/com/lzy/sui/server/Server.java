@@ -37,6 +37,7 @@ import com.lzy.sui.common.model.push.HostOutlineEvent;
 import com.lzy.sui.common.utils.CommonUtils;
 import com.lzy.sui.common.utils.MillisecondClock;
 import com.lzy.sui.common.utils.RSAUtils;
+import com.lzy.sui.common.utils.SocketUtils;
 import com.lzy.sui.server.filter.HeartbeatFilter;
 import com.lzy.sui.server.push.PushServer;
 import com.lzy.sui.server.db.entity.Auth;
@@ -76,7 +77,7 @@ public class Server {
 
 	final MillisecondClock clock = new MillisecondClock(cachedThreadPool);
 
-	private Gson gson = new Gson();
+//	private Gson gson = new Gson();
 
 	private Filter headFilter = null;
 
@@ -123,7 +124,7 @@ public class Server {
 							String json = br.readLine();
 							ProtocolEntity entity=null;
 							try{
-								entity = gson.fromJson(json, ProtocolEntity.class);
+								entity = CommonUtils.gson.fromJson(json, ProtocolEntity.class);
 							}catch(JsonSyntaxException e){//bug,不知道为什么传送中数据异常频率这么高，先做返回错误处理
 								logger.error("解析json出错：json[{}]",json);
 							}
@@ -160,9 +161,9 @@ public class Server {
 	// 登陆，成功则返回身份id
 	private String login(Socket socket) throws Exception {
 		BufferedReader br = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-		BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
+//		BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
 		String json = br.readLine();
-		ProtocolEntity entity = gson.fromJson(json, ProtocolEntity.class);
+		ProtocolEntity entity = CommonUtils.gson.fromJson(json, ProtocolEntity.class);
 		ProtocolEntity.Identity identity = entity.getIdentity();
 
 		String identityId = new String();
@@ -183,13 +184,14 @@ public class Server {
 			String base64PublicKey = Base64.encode(bytes);
 			entity = new ProtocolEntity();
 			entity.setReply(base64PublicKey);
-			json = gson.toJson(entity);
-			bw.write(json);
-			bw.newLine();
-			bw.flush();
+//			json = gson.toJson(entity);
+//			bw.write(json);
+//			bw.newLine();
+//			bw.flush();
+			SocketUtils.send(socket, entity);
 			// 2.校验用户名密码
 			json = br.readLine();
-			entity = gson.fromJson(json, ProtocolEntity.class);
+			entity = CommonUtils.gson.fromJson(json, ProtocolEntity.class);
 			// 数据库操作（之后结合spirng等修改）
 			String userName = RSAUtils.decrypt(entity.getParams().get(0), privateKey);
 			String passWord = RSAUtils.decrypt(entity.getParams().get(1), privateKey);
@@ -202,10 +204,11 @@ public class Server {
 					entity = new ProtocolEntity();
 					entity.setReplyState(ProtocolEntity.ReplyState.ERROR);
 					entity.setReply("该用户已登陆，不能重复登陆");
-					json = gson.toJson(entity);
-					bw.write(json);
-					bw.newLine();
-					bw.flush();
+//					json = gson.toJson(entity);
+//					bw.write(json);
+//					bw.newLine();
+//					bw.flush();
+					SocketUtils.send(socket, entity);
 					throw new RuntimeException("该用户已登陆，不能重复登陆");
 				}
 				hostEntity.setIdentityId(identityId);
@@ -215,19 +218,21 @@ public class Server {
 				entity = new ProtocolEntity();
 				entity.setReplyState(ProtocolEntity.ReplyState.SUCCESE);
 				entity.setReply("登陆成功");
-				json = gson.toJson(entity);
-				bw.write(json);
-				bw.newLine();
-				bw.flush();
+//				json = gson.toJson(entity);
+//				bw.write(json);
+//				bw.newLine();
+//				bw.flush();
+				SocketUtils.send(socket, entity);
 				System.out.println("登陆成功");
 			} else {
 				entity = new ProtocolEntity();
 				entity.setReplyState(ProtocolEntity.ReplyState.ERROR);
 				entity.setReply("登陆失败，用户名或密码错误");
-				json = gson.toJson(entity);
-				bw.write(json);
-				bw.newLine();
-				bw.flush();
+//				json = gson.toJson(entity);
+//				bw.write(json);
+//				bw.newLine();
+//				bw.flush();
+				SocketUtils.send(socket, entity);
 				System.out.println("登陆失败");
 				throw new RuntimeException("登陆失败，用户名或密码错误");
 			}
@@ -243,7 +248,7 @@ public class Server {
 		cachedThreadPool.execute(() -> {
 			try {
 				HostOnlineEvent hostEvent = new HostOnlineEvent();
-				hostEvent.setJson(gson.toJson(hostEntity));
+				hostEvent.setJson(CommonUtils.gson.toJson(hostEntity));
 				PushServer.newInstance().push(hostEvent, hostEntity.getIdentityId());
 			} catch (Exception e) {
 				e.printStackTrace();
@@ -350,7 +355,7 @@ public class Server {
 			try {
 				HostEntity HostEntity = new HostEntity();
 				HostEntity.setIdentityId(identityId);
-				String json = gson.toJson(HostEntity);
+				String json = CommonUtils.gson.toJson(HostEntity);
 				HostOutlineEvent hostOutlineEvent = new HostOutlineEvent();
 				hostOutlineEvent.setJson(json);
 				PushServer.newInstance().push(hostOutlineEvent);
