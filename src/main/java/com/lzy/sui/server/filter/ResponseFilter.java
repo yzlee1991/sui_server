@@ -7,12 +7,11 @@ import java.net.Socket;
 import com.google.gson.Gson;
 import com.lzy.sui.common.abs.Filter;
 import com.lzy.sui.common.model.ProtocolEntity;
+import com.lzy.sui.common.utils.SocketUtils;
 import com.lzy.sui.server.Server;
 
 public class ResponseFilter extends Filter{
 
-	private Gson gson = new Gson();
-	
 	@Override
 	public void handle(ProtocolEntity entity) {
 		try{
@@ -20,10 +19,7 @@ public class ResponseFilter extends Filter{
 				System.out.println("ResponseFilter  handling "+entity);
 				//转发，之后添加权限控制
 				Socket targetSocket=Server.newInstance().socketMap.get(entity.getTargetId());
-				BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(targetSocket.getOutputStream()));
-				bw.write(gson.toJson(entity));
-				bw.newLine();
-				bw.flush();
+				SocketUtils.sendByNoBlock(targetSocket, entity);
 			}else{
 				if(this.filter!=null){
 					this.filter.handle(entity);

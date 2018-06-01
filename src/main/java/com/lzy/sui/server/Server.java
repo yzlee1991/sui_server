@@ -77,8 +77,6 @@ public class Server {
 
 	final MillisecondClock clock = new MillisecondClock(cachedThreadPool);
 
-//	private Gson gson = new Gson();
-
 	private Filter headFilter = null;
 
 	private long timeout = 30000;
@@ -105,8 +103,6 @@ public class Server {
 			ServerSocket serverSocket = new ServerSocket(12345);
 			while (true) {
 				Socket socket = serverSocket.accept();
-				BufferedReader br = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-				BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
 				cachedThreadPool.execute(() -> {
 					try {
 						// 1.登陆
@@ -121,13 +117,7 @@ public class Server {
 						// 2.登陆成功启动监听
 						Thread currentThread = Thread.currentThread();
 						while (!currentThread.isInterrupted()) {
-							String json = br.readLine();
-							ProtocolEntity entity=null;
-							try{
-								entity = CommonUtils.gson.fromJson(json, ProtocolEntity.class);
-							}catch(JsonSyntaxException e){//bug,不知道为什么传送中数据异常频率这么高，先做返回错误处理
-								logger.error("解析json出错：json[{}]",json);
-							}
+							ProtocolEntity entity=SocketUtils.receive(socket);
 							// observer.notifyListener(entity);
 							entity.setIdentityId(identityId);
 							headFilter.handle(entity);
@@ -139,8 +129,6 @@ public class Server {
 						e.printStackTrace();
 						// 关闭连接
 						try {
-							br.close();
-							bw.close();
 							socket.close();
 						} catch (Exception e1) {
 							e1.printStackTrace();
@@ -160,10 +148,7 @@ public class Server {
 
 	// 登陆，成功则返回身份id
 	private String login(Socket socket) throws Exception {
-		BufferedReader br = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-//		BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
-		String json = br.readLine();
-		ProtocolEntity entity = CommonUtils.gson.fromJson(json, ProtocolEntity.class);
+		ProtocolEntity entity=SocketUtils.receive(socket);
 		ProtocolEntity.Identity identity = entity.getIdentity();
 
 		String identityId = new String();
@@ -184,14 +169,9 @@ public class Server {
 			String base64PublicKey = Base64.encode(bytes);
 			entity = new ProtocolEntity();
 			entity.setReply(base64PublicKey);
-//			json = gson.toJson(entity);
-//			bw.write(json);
-//			bw.newLine();
-//			bw.flush();
 			SocketUtils.send(socket, entity);
 			// 2.校验用户名密码
-			json = br.readLine();
-			entity = CommonUtils.gson.fromJson(json, ProtocolEntity.class);
+			entity=SocketUtils.receive(socket);
 			// 数据库操作（之后结合spirng等修改）
 			String userName = RSAUtils.decrypt(entity.getParams().get(0), privateKey);
 			String passWord = RSAUtils.decrypt(entity.getParams().get(1), privateKey);
@@ -204,10 +184,6 @@ public class Server {
 					entity = new ProtocolEntity();
 					entity.setReplyState(ProtocolEntity.ReplyState.ERROR);
 					entity.setReply("该用户已登陆，不能重复登陆");
-//					json = gson.toJson(entity);
-//					bw.write(json);
-//					bw.newLine();
-//					bw.flush();
 					SocketUtils.send(socket, entity);
 					throw new RuntimeException("该用户已登陆，不能重复登陆");
 				}
@@ -218,20 +194,12 @@ public class Server {
 				entity = new ProtocolEntity();
 				entity.setReplyState(ProtocolEntity.ReplyState.SUCCESE);
 				entity.setReply("登陆成功");
-//				json = gson.toJson(entity);
-//				bw.write(json);
-//				bw.newLine();
-//				bw.flush();
 				SocketUtils.send(socket, entity);
 				System.out.println("登陆成功");
 			} else {
 				entity = new ProtocolEntity();
 				entity.setReplyState(ProtocolEntity.ReplyState.ERROR);
 				entity.setReply("登陆失败，用户名或密码错误");
-//				json = gson.toJson(entity);
-//				bw.write(json);
-//				bw.newLine();
-//				bw.flush();
 				SocketUtils.send(socket, entity);
 				System.out.println("登陆失败");
 				throw new RuntimeException("登陆失败，用户名或密码错误");

@@ -7,12 +7,12 @@ import java.net.Socket;
 import com.google.gson.Gson;
 import com.lzy.sui.common.abs.Filter;
 import com.lzy.sui.common.model.ProtocolEntity;
+import com.lzy.sui.common.utils.SocketUtils;
 import com.lzy.sui.server.Server;
 import com.lzy.sui.server.rmi.RmiServer;
 
 public class RmiFilter extends Filter {
 
-	private Gson gson = new Gson();
 
 	@Override
 	public void handle(ProtocolEntity entity) {
@@ -30,16 +30,12 @@ public class RmiFilter extends Filter {
 				if (rmiCache == null) {
 					replyEntity.setReplyState(ProtocolEntity.ReplyState.ERROR);
 					replyEntity.setReply("该RMI服务不存在，服务名称：" + rmiName);
-					bw.write(gson.toJson(entity));
-					bw.newLine();
-					bw.flush();
+					SocketUtils.sendByNoBlock(targetSocket, entity);
 					return;
 				}
 				replyEntity.setReplyState(ProtocolEntity.ReplyState.SUCCESE);
 				replyEntity.setReply(rmiCache.getInf().getName());
-				bw.write(gson.toJson(replyEntity));
-				bw.newLine();
-				bw.flush();
+				SocketUtils.sendByNoBlock(targetSocket, entity);
 			} else {
 				if (this.filter != null) {
 					this.filter.handle(entity);

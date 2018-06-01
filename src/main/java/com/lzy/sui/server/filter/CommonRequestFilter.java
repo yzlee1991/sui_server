@@ -13,12 +13,12 @@ import com.lzy.sui.common.model.ProtocolEntity;
 import com.lzy.sui.common.proxy.CommonRequestSocketHandle;
 import com.lzy.sui.common.proxy.ResponseSocketHandle;
 import com.lzy.sui.common.utils.CommonUtils;
+import com.lzy.sui.common.utils.SocketUtils;
 import com.lzy.sui.server.Server;
 import com.sun.org.apache.xml.internal.security.utils.Base64;
 
 public class CommonRequestFilter extends Filter {
 
-	private Gson gson = new Gson();
 
 	@Override
 	public void handle(ProtocolEntity entity) {
@@ -71,10 +71,7 @@ public class CommonRequestFilter extends Filter {
 					method.invoke(proxy, objs);
 				} else {// 转发请求
 					Socket targetSocket = Server.newInstance().socketMap.get(entity.getTargetId());
-					BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(targetSocket.getOutputStream()));
-					bw.write(gson.toJson(entity));
-					bw.newLine();
-					bw.flush();
+					SocketUtils.sendByNoBlock(targetSocket,entity);
 				}
 			} else {
 				if (this.filter != null) {

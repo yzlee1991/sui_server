@@ -14,13 +14,12 @@ import com.google.gson.Gson;
 import com.lzy.sui.common.model.ProtocolEntity;
 import com.lzy.sui.common.model.push.PushEvent;
 import com.lzy.sui.common.utils.CommonUtils;
+import com.lzy.sui.common.utils.SocketUtils;
 import com.lzy.sui.server.Server;
 import com.sun.org.apache.xml.internal.security.utils.Base64;
 
 public class PushServer {
 
-	Gson gson=new Gson();
-	
 	private static volatile PushServer pushServer;
 
 	private PushServer() {
@@ -45,16 +44,12 @@ public class PushServer {
 		String reply=Base64.encode(bytes);
 		entity.setReply(reply);
 		
-		String json=gson.toJson(entity);
 		for(String key:Server.newInstance().socketMap.keySet()){
 			if(filterSet.contains(key)){
 				continue;
 			}
 			Socket socket=Server.newInstance().socketMap.get(key);
-			BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
-			bw.write(json);
-			bw.newLine();
-			bw.flush();
+			SocketUtils.send(socket, entity);
 		}
 	}
 
