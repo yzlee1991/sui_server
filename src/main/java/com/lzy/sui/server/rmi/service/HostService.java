@@ -1,6 +1,11 @@
 package com.lzy.sui.server.rmi.service;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import com.lzy.sui.common.inf.HostInf;
+import com.lzy.sui.common.model.push.HostEntity;
+import com.lzy.sui.server.Server;
 
 public class HostService implements HostInf{
 
@@ -16,6 +21,21 @@ public class HostService implements HostInf{
 //			e.printStackTrace();
 //		}
 		return "调用成功";
+	}
+
+	@Override
+	public List<HostEntity> getOnlineHostEntity() {
+		HostEntity hostEntity=Server.newInstance().getOwnHostEntity();
+		String identityId=hostEntity.getIdentityId();
+		List<HostEntity> list=new ArrayList<HostEntity>();
+		for(Thread key:Server.newInstance().hostMap.keySet()){
+			HostEntity he=Server.newInstance().hostMap.get(key);
+			if(he.getIdentityId().equals(identityId)){
+				continue;
+			}
+			list.add(he);
+		}
+		return list;
 	}
 
 }

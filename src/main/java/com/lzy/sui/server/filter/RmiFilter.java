@@ -30,12 +30,12 @@ public class RmiFilter extends Filter {
 				if (rmiCache == null) {
 					replyEntity.setReplyState(ProtocolEntity.ReplyState.ERROR);
 					replyEntity.setReply("该RMI服务不存在，服务名称：" + rmiName);
-					SocketUtils.sendByNoBlock(targetSocket, entity);
+					SocketUtils.sendByNoBlock(targetSocket, replyEntity);
 					return;
 				}
 				replyEntity.setReplyState(ProtocolEntity.ReplyState.SUCCESE);
 				replyEntity.setReply(rmiCache.getInf().getName());
-				SocketUtils.sendByNoBlock(targetSocket, entity);
+				SocketUtils.sendByNoBlock(targetSocket, replyEntity);
 			} else {
 				if (this.filter != null) {
 					this.filter.handle(entity);

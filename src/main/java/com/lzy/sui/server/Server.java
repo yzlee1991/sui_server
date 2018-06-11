@@ -11,6 +11,7 @@ import java.net.Socket;
 import java.security.KeyPair;
 import java.security.PrivateKey;
 import java.security.PublicKey;
+import java.time.Clock;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -19,6 +20,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -88,13 +90,19 @@ public class Server {
 	private RmiServer rmiServer = RmiServer.newInstance();
 
 	// 缓存心跳检测时间
-	public Map<Socket, Long> heartBeatMap = new HashMap<Socket, Long>();
+//	public Map<Socket, Long> heartBeatMap = new HashMap<Socket, Long>();
 
 	// 缓存连接服务器的所有socket
-	public Map<String, Socket> socketMap = new HashMap<String, Socket>();// key=identityId
+	public Map<String, Socket> socketMap = new ConcurrentHashMap<String, Socket>();// key=identityId
+	
+	// 用于关联上下2个map
+	public Map<String,Thread> threadMap=new ConcurrentHashMap<String, Thread>();// key=identityId
 
 	// 缓存socket对应的identityId
-	public Map<Socket, String> identityIdMap = new HashMap<Socket, String>();
+//	public Map<Socket, String> identityIdMap = new HashMap<Socket, String>();
+	
+	// 缓存用户信息
+	public Map<Thread, HostEntity> hostMap=new ConcurrentHashMap<Thread, HostEntity>();// key=currentThread
 
 	public void start() {
 		init();
@@ -106,22 +114,24 @@ public class Server {
 				cachedThreadPool.execute(() -> {
 					try {
 						// 1.登陆
-						String identityId = login(socket);
+						login(socket);
 						// if (!flag) {
 						// br.close();
 						// bw.close();
 						// socket.close();
 						// return;
 						// }
-						heartBeatMap.put(socket, lastTime);
+//						heartBeatMap.put(socket, lastTime);
 						// 2.登陆成功启动监听
 						Thread currentThread = Thread.currentThread();
 						while (!currentThread.isInterrupted()) {
 							ProtocolEntity entity=SocketUtils.receive(socket);
 							// 刷新心跳时间
-							heartBeatMap.put(socket, clock.now());
+							HostEntity hostEntity=hostMap.get(Thread.currentThread());
+							hostEntity.setFlushTime(clock.now());
+//							heartBeatMap.put(socket, clock.now());
 							// observer.notifyListener(entity);
-							entity.setIdentityId(identityId);
+							entity.setIdentityId(hostEntity.getIdentityId());
 							headFilter.handle(entity);
 						}
 
@@ -147,7 +157,7 @@ public class Server {
 	}
 
 	// 登陆，成功则返回身份id
-	private String login(Socket socket) throws Exception {
+	private void login(Socket socket) throws Exception {
 		ProtocolEntity entity=SocketUtils.receive(socket);
 		ProtocolEntity.Identity identity = entity.getIdentity();
 
@@ -189,7 +199,8 @@ public class Server {
 				}
 				hostEntity.setIdentityId(identityId);
 				socketMap.put(identityId, socket);
-				identityIdMap.put(socket, identityId);
+				threadMap.put(identityId, Thread.currentThread());
+//				identityIdMap.put(socket, identityId);
 				// identityMap.put(socket.hashCode(), identityId);
 				entity = new ProtocolEntity();
 				entity.setReplyState(ProtocolEntity.ReplyState.SUCCESE);
@@ -212,6 +223,10 @@ public class Server {
 			// 未知类型，抛异常
 		}
 
+		//缓存用户信息
+		hostEntity.setFlushTime(clock.now());
+		hostMap.put(Thread.currentThread(), hostEntity);
+		
 		// 上线推送
 		cachedThreadPool.execute(() -> {
 			try {
@@ -223,7 +238,7 @@ public class Server {
 			}
 		});
 
-		return identityId;
+//		return identityId;
 	}
 
 	// 初始化
@@ -274,26 +289,28 @@ public class Server {
 						Thread.sleep(delayTime);
 						continue;
 					}
-					// for (Socket socket : heartBeatMap.keySet()) {
-					// long lastHeartBeatTime = heartBeatMap.get(socket);
-					// if ((currentTime - lastHeartBeatTime) > timeout) {
-					// // 超时socket
-					// System.out.println("超时Socket:" + socket);
-					// socket.close();
-					// heartBeatMap.remove(socket);// 迭代的时候操作容器有问题，之后修复
-					//
-					// // 下线推送
-					// HostEntity entity = new HostEntity();
-					// }
-					// }
-					Set<Entry<Socket, Long>> set = heartBeatMap.entrySet();
-					Iterator<Entry<Socket, Long>> it = set.iterator();
+//					Set<Entry<Socket, Long>> set = heartBeatMap.entrySet();
+//					Iterator<Entry<Socket, Long>> it = set.iterator();
+//					List<String> expiredSocketList = new ArrayList<String>();
+//					while (it.hasNext()) {
+//						Entry<Socket, Long> entry = it.next();
+//						long lastHeartBeatTime = entry.getValue();
+//						if ((currentTime - lastHeartBeatTime) > timeout) {
+//							String identityId = identityIdMap.get(entry.getKey());
+//							expiredSocketList.add(identityId);
+//						}
+//					}
+//					outLine(expiredSocketList);
+//					lastTime = currentTime;
+					Set<Entry<Thread, HostEntity>> set = hostMap.entrySet();
+					Iterator<Entry<Thread, HostEntity>> it = set.iterator();
 					List<String> expiredSocketList = new ArrayList<String>();
 					while (it.hasNext()) {
-						Entry<Socket, Long> entry = it.next();
-						long lastHeartBeatTime = entry.getValue();
+						Entry<Thread, HostEntity> entry = it.next();
+						HostEntity hostEntity=entry.getValue();
+						long lastHeartBeatTime = hostEntity.getFlushTime();
 						if ((currentTime - lastHeartBeatTime) > timeout) {
-							String identityId = identityIdMap.get(entry.getKey());
+							String identityId = hostEntity.getIdentityId();
 							expiredSocketList.add(identityId);
 						}
 					}
@@ -334,11 +351,21 @@ public class Server {
 	}
 
 	private void clearSocketData(String identityId) throws Exception {
-		Socket socket = socketMap.get(identityId);
-		heartBeatMap.remove(socket);
-		identityIdMap.remove(socket);
+		Thread thread=threadMap.get(identityId);
+		hostMap.remove(thread);
+		threadMap.remove(identityId);
 		socketMap.remove(identityId);
-		System.out.println("清理Socket:" + socket + "  identityId:" + identityId);
+//		Socket socket = socketMap.get(identityId);
+//		heartBeatMap.remove(socket);
+//		identityIdMap.remove(socket);
+//		socketMap.remove(identityId);
+		System.out.println("清理Socket,  identityId=" + identityId);
 	}
 
+	
+	public HostEntity getOwnHostEntity(){
+		Thread currentThread =Thread.currentThread();
+		return hostMap.get(currentThread);
+	}
+	
 }
