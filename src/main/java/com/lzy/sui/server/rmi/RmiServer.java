@@ -7,11 +7,21 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.lzy.sui.common.abs.Filter;
+import com.lzy.sui.common.inf.HostInf;
 import com.lzy.sui.common.inf.Rmiable;
+import com.lzy.sui.common.inf.UpdateInf;
+import com.lzy.sui.server.Server;
+import com.lzy.sui.server.rmi.service.HostService;
+import com.lzy.sui.server.rmi.service.UpdateService;
 
 public class RmiServer {
 
+	Logger logger = LoggerFactory.getLogger(RmiServer.class);
+	
 	public class Cache {
 		private Class inf;
 		
@@ -51,13 +61,27 @@ public class RmiServer {
 
 	private Map<String,Cache> cacheMap=new HashMap<String, Cache>();//key=rmiName
 	
+	public void autoRegister() {
+		try {
+			String str = this.getClass().getResource("").toURI().toString();
+			if (str.startsWith("file")) {
+				autoRegisterByFile();
+			} else if (str.startsWith("jar")) {
+				autoRegisterByJar();
+			}
+		} catch (Exception e) {
+			e.printStackTrace();
+			logger.info("注册业务异常" + e.getMessage());
+		}
+	}
+	
 	/**
 	 * 自动注册RMI服务，服务名称默认为实现的接口名称，不支持多个实现相同接口的服务，若需要则手动注册
 	 */
-	public void autoRegister() {
-		System.out.println("RMI远程服务自动注册...");
+	private void autoRegisterByFile() {
+		logger.info("RMI远程服务自动注册...");
 		try {
-			String scanPath = this.getClass().getResource("").getPath() + "service";
+			String scanPath = this.getClass().getResource("").toURI().getPath() + "service";
 			Filter filter = null;
 			String packageName = this.getClass().getPackage().getName() + ".service.";
 			File file = new File(scanPath);
@@ -71,11 +95,16 @@ public class RmiServer {
 			}
 		} catch (Exception e) {
 			e.printStackTrace();
-			System.out.println("RMI服务注册异常" + e.getMessage());
+			logger.info("RMI服务注册异常" + e.getMessage());
 		}
-
 	}
 
+	//可运行jar包环境（暂时没找到jar包的遍历，先手动注册，之后再弄）
+	public void autoRegisterByJar(){
+		bind(HostInf.class.getName(),new HostService());
+		bind(UpdateInf.class.getName(),new UpdateService());
+	}
+	
 	private Class getRmiInterface(Class clazz) {
 		for (Class infClass : clazz.getInterfaces()) {
 			for (Class rmiClass : infClass.getInterfaces()) {
@@ -92,7 +121,7 @@ public class RmiServer {
 		if (cacheMap.containsKey(rmiName)) {
 			throw new RuntimeException(rmiName + " 服务已注册");
 		}
-		System.out.println("注册RMI远程服务：" + rmiName+" - "+obj.getClass().getName());
+		logger.info("注册RMI远程服务：" + rmiName+" - "+obj.getClass().getName());
 		Class infClass = getRmiInterface(obj.getClass());
 		Cache cache=new Cache();
 		cache.setInf(infClass);

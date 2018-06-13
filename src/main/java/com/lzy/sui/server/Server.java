@@ -41,10 +41,14 @@ import com.lzy.sui.common.utils.MillisecondClock;
 import com.lzy.sui.common.utils.RSAUtils;
 import com.lzy.sui.common.utils.SocketUtils;
 import com.lzy.sui.server.filter.HeartbeatFilter;
+import com.lzy.sui.server.filter.ResponseFilter;
+import com.lzy.sui.server.filter.RmiFilter;
+import com.lzy.sui.server.filter.RmiRequestFilter;
 import com.lzy.sui.server.push.PushServer;
 import com.lzy.sui.server.db.entity.Auth;
 import com.lzy.sui.server.db.mapper.AuthMapper;
 import com.lzy.sui.server.filter.CommonRequestFilter;
+import com.lzy.sui.server.filter.ExitFilter;
 import com.lzy.sui.server.rmi.RmiServer;
 import com.lzy.sui.server.rmi.service.HostService;
 import com.lzy.sui.server.utils.Mybaits;
@@ -53,7 +57,7 @@ import com.sun.org.apache.xml.internal.security.utils.Base64;
 public class Server {
 
 	Logger logger = LoggerFactory.getLogger(Server.class);
-	
+
 	private static volatile Server server;
 
 	private Server() {
@@ -90,25 +94,25 @@ public class Server {
 	private RmiServer rmiServer = RmiServer.newInstance();
 
 	// 缓存心跳检测时间
-//	public Map<Socket, Long> heartBeatMap = new HashMap<Socket, Long>();
+	// public Map<Socket, Long> heartBeatMap = new HashMap<Socket, Long>();
 
 	// 缓存连接服务器的所有socket
 	public Map<String, Socket> socketMap = new ConcurrentHashMap<String, Socket>();// key=identityId
-	
+
 	// 用于关联上下2个map
-	public Map<String,Thread> threadMap=new ConcurrentHashMap<String, Thread>();// key=identityId
+	public Map<String, Thread> threadMap = new ConcurrentHashMap<String, Thread>();// key=identityId
 
 	// 缓存socket对应的identityId
-//	public Map<Socket, String> identityIdMap = new HashMap<Socket, String>();
-	
+	// public Map<Socket, String> identityIdMap = new HashMap<Socket, String>();
+
 	// 缓存用户信息
-	public Map<Thread, HostEntity> hostMap=new ConcurrentHashMap<Thread, HostEntity>();// key=currentThread
+	public Map<Thread, HostEntity> hostMap = new ConcurrentHashMap<Thread, HostEntity>();// key=currentThread
 
 	public void start() {
 		init();
-		System.out.println("启动服务...");
+		logger.info("启动服务...");
 		try {
-			ServerSocket serverSocket = new ServerSocket(12345);
+			ServerSocket serverSocket = new ServerSocket(8080);
 			while (true) {
 				Socket socket = serverSocket.accept();
 				cachedThreadPool.execute(() -> {
@@ -121,15 +125,15 @@ public class Server {
 						// socket.close();
 						// return;
 						// }
-//						heartBeatMap.put(socket, lastTime);
+						// heartBeatMap.put(socket, lastTime);
 						// 2.登陆成功启动监听
 						Thread currentThread = Thread.currentThread();
 						while (!currentThread.isInterrupted()) {
-							ProtocolEntity entity=SocketUtils.receive(socket);
+							ProtocolEntity entity = SocketUtils.receive(socket);
 							// 刷新心跳时间
-							HostEntity hostEntity=hostMap.get(Thread.currentThread());
+							HostEntity hostEntity = hostMap.get(Thread.currentThread());
 							hostEntity.setFlushTime(clock.now());
-//							heartBeatMap.put(socket, clock.now());
+							// heartBeatMap.put(socket, clock.now());
 							// observer.notifyListener(entity);
 							entity.setIdentityId(hostEntity.getIdentityId());
 							headFilter.handle(entity);
@@ -158,7 +162,7 @@ public class Server {
 
 	// 登陆，成功则返回身份id
 	private void login(Socket socket) throws Exception {
-		ProtocolEntity entity=SocketUtils.receive(socket);
+		ProtocolEntity entity = SocketUtils.receive(socket);
 		ProtocolEntity.Identity identity = entity.getIdentity();
 
 		String identityId = new String();
@@ -181,7 +185,7 @@ public class Server {
 			entity.setReply(base64PublicKey);
 			SocketUtils.send(socket, entity);
 			// 2.校验用户名密码
-			entity=SocketUtils.receive(socket);
+			entity = SocketUtils.receive(socket);
 			// 数据库操作（之后结合spirng等修改）
 			String userName = RSAUtils.decrypt(entity.getParams().get(0), privateKey);
 			String passWord = RSAUtils.decrypt(entity.getParams().get(1), privateKey);
@@ -200,33 +204,42 @@ public class Server {
 				hostEntity.setIdentityId(identityId);
 				socketMap.put(identityId, socket);
 				threadMap.put(identityId, Thread.currentThread());
-//				identityIdMap.put(socket, identityId);
+				// identityIdMap.put(socket, identityId);
 				// identityMap.put(socket.hashCode(), identityId);
 				entity = new ProtocolEntity();
 				entity.setReplyState(ProtocolEntity.ReplyState.SUCCESE);
 				entity.setReply("登陆成功");
 				SocketUtils.send(socket, entity);
-				System.out.println("登陆成功");
+				logger.info("登陆成功");
 			} else {
 				entity = new ProtocolEntity();
 				entity.setReplyState(ProtocolEntity.ReplyState.ERROR);
 				entity.setReply("登陆失败，用户名或密码错误");
 				SocketUtils.send(socket, entity);
-				System.out.println("登陆失败");
+				logger.info("登陆失败");
 				throw new RuntimeException("登陆失败，用户名或密码错误");
 			}
 
 		} else if (identity.equals(ProtocolEntity.Identity.CORPSE)) {
-			// 1.查找数据库，是否被拉黑，被黑则发送指令退出程序
+			// 1.查找数据库，是否被拉黑，被黑则发送指令退出程序,之后实现
 
+			identityId = entity.getIdentityId();
+			hostEntity.setIdentityId(identityId);
+			socketMap.put(identityId, socket);
+			threadMap.put(identityId, Thread.currentThread());
+			entity = new ProtocolEntity();
+			entity.setReplyState(ProtocolEntity.ReplyState.SUCCESE);
+			entity.setReply("登陆成功");
+			SocketUtils.send(socket, entity);
+			logger.info("登陆成功");
 		} else {
 			// 未知类型，抛异常
 		}
 
-		//缓存用户信息
+		// 缓存用户信息
 		hostEntity.setFlushTime(clock.now());
 		hostMap.put(Thread.currentThread(), hostEntity);
-		
+
 		// 上线推送
 		cachedThreadPool.execute(() -> {
 			try {
@@ -238,12 +251,12 @@ public class Server {
 			}
 		});
 
-//		return identityId;
+		// return identityId;
 	}
 
 	// 初始化
 	public void init() {
-		System.out.println("初始化配置...");
+		logger.info("初始化配置...");
 		// 1.注册filter，之后改成反射可以扫描注册
 		register();
 		// 2.rmi服务注册
@@ -253,9 +266,23 @@ public class Server {
 	}
 
 	private void register() {
-		System.out.println("处理器自动注册...");
 		try {
-			String scanPath = this.getClass().getResource("").getPath() + "filter";
+			String str = this.getClass().getResource("").toURI().toString();
+			if (str.startsWith("file")) {
+				registerByFile();
+			} else if (str.startsWith("jar")) {
+				registerByJar();
+			}
+		} catch (Exception e) {
+			e.printStackTrace();
+			logger.info("注册业务异常" + e.getMessage());
+		}
+	}
+
+	private void registerByFile() {
+		logger.info("处理器自动注册...");
+		try {
+			String scanPath = this.getClass().getResource("").toURI().getPath() + "filter";
 			Filter filter = null;
 			String packageName = this.getClass().getPackage().getName() + ".filter.";
 			File file = new File(scanPath);
@@ -270,17 +297,42 @@ public class Server {
 					filter.register(newFilter);
 					filter = newFilter;
 				}
-				System.out.println("注册处理器：" + newFilter.getClass().getName());
+				logger.info("注册处理器：" + newFilter.getClass().getName());
 			}
 		} catch (Exception e) {
 			e.printStackTrace();
-			System.out.println("注册业务异常" + e.getMessage());
+			logger.info("注册业务异常" + e.getMessage());
 		}
 
 	}
 
+	//可运行jar包环境（暂时没找到jar包的遍历，先手动注册，之后再弄）
+	private void registerByJar() {
+		if (headFilter != null) {
+			return;
+		}
+		Filter filter=new CommonRequestFilter();
+		headFilter=filter;
+		logger.info("注册处理器："+filter.getClass().getName());
+		filter.register(new ExitFilter());
+		filter=filter.filter;
+		logger.info("注册处理器："+filter.getClass().getName());
+		filter.register(new HeartbeatFilter());
+		filter=filter.filter;
+		logger.info("注册处理器："+filter.getClass().getName());
+		filter.register(new ResponseFilter());
+		filter=filter.filter;
+		logger.info("注册处理器："+filter.getClass().getName());
+		filter.register(new RmiFilter());
+		filter=filter.filter;
+		logger.info("注册处理器："+filter.getClass().getName());
+		filter.register(new RmiRequestFilter());
+		filter=filter.filter;
+		logger.info("注册处理器："+filter.getClass().getName());
+	}
+	
 	private void heartBeatCheck() {
-		System.out.println("开启心跳超时检测");
+		logger.info("开启心跳超时检测");
 		cachedThreadPool.execute(() -> {
 			try {
 				while (true) {
@@ -289,25 +341,25 @@ public class Server {
 						Thread.sleep(delayTime);
 						continue;
 					}
-//					Set<Entry<Socket, Long>> set = heartBeatMap.entrySet();
-//					Iterator<Entry<Socket, Long>> it = set.iterator();
-//					List<String> expiredSocketList = new ArrayList<String>();
-//					while (it.hasNext()) {
-//						Entry<Socket, Long> entry = it.next();
-//						long lastHeartBeatTime = entry.getValue();
-//						if ((currentTime - lastHeartBeatTime) > timeout) {
-//							String identityId = identityIdMap.get(entry.getKey());
-//							expiredSocketList.add(identityId);
-//						}
-//					}
-//					outLine(expiredSocketList);
-//					lastTime = currentTime;
+					// Set<Entry<Socket, Long>> set = heartBeatMap.entrySet();
+					// Iterator<Entry<Socket, Long>> it = set.iterator();
+					// List<String> expiredSocketList = new ArrayList<String>();
+					// while (it.hasNext()) {
+					// Entry<Socket, Long> entry = it.next();
+					// long lastHeartBeatTime = entry.getValue();
+					// if ((currentTime - lastHeartBeatTime) > timeout) {
+					// String identityId = identityIdMap.get(entry.getKey());
+					// expiredSocketList.add(identityId);
+					// }
+					// }
+					// outLine(expiredSocketList);
+					// lastTime = currentTime;
 					Set<Entry<Thread, HostEntity>> set = hostMap.entrySet();
 					Iterator<Entry<Thread, HostEntity>> it = set.iterator();
 					List<String> expiredSocketList = new ArrayList<String>();
 					while (it.hasNext()) {
 						Entry<Thread, HostEntity> entry = it.next();
-						HostEntity hostEntity=entry.getValue();
+						HostEntity hostEntity = entry.getValue();
 						long lastHeartBeatTime = hostEntity.getFlushTime();
 						if ((currentTime - lastHeartBeatTime) > timeout) {
 							String identityId = hostEntity.getIdentityId();
@@ -351,21 +403,20 @@ public class Server {
 	}
 
 	private void clearSocketData(String identityId) throws Exception {
-		Thread thread=threadMap.get(identityId);
+		Thread thread = threadMap.get(identityId);
 		hostMap.remove(thread);
 		threadMap.remove(identityId);
 		socketMap.remove(identityId);
-//		Socket socket = socketMap.get(identityId);
-//		heartBeatMap.remove(socket);
-//		identityIdMap.remove(socket);
-//		socketMap.remove(identityId);
-		System.out.println("清理Socket,  identityId=" + identityId);
+		// Socket socket = socketMap.get(identityId);
+		// heartBeatMap.remove(socket);
+		// identityIdMap.remove(socket);
+		// socketMap.remove(identityId);
+		logger.info("清理Socket,  identityId=" + identityId);
 	}
 
-	
-	public HostEntity getOwnHostEntity(){
-		Thread currentThread =Thread.currentThread();
+	public HostEntity getOwnHostEntity() {
+		Thread currentThread = Thread.currentThread();
 		return hostMap.get(currentThread);
 	}
-	
+
 }
