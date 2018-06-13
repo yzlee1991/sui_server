@@ -224,6 +224,13 @@ public class Server {
 			// 1.查找数据库，是否被拉黑，被黑则发送指令退出程序,之后实现
 
 			identityId = entity.getIdentityId();
+			if (socketMap.containsKey(identityId)) {
+				entity = new ProtocolEntity();
+				entity.setReplyState(ProtocolEntity.ReplyState.ERROR);
+				entity.setReply("该用户已登陆，不能重复登陆");
+				SocketUtils.send(socket, entity);
+				throw new RuntimeException("该用户已登陆，不能重复登陆");
+			}
 			hostEntity.setIdentityId(identityId);
 			socketMap.put(identityId, socket);
 			threadMap.put(identityId, Thread.currentThread());
